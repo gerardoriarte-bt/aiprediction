@@ -1,8 +1,10 @@
 # Sintetic Prediction AI
 
+> **An evolution of [MiroFish](https://github.com/666ghj/MiroFish).** Sintetic Prediction AI is a product layer built on top of the MiroFish multi-agent simulation engine. The original MiroFish project provides the agent-based social simulation core (OASIS-derived: graph build, persona generation, dual-platform simulation). Sintetic adds the multi-client product layer on top: per-client knowledge graphs, creative testing (R1–R6 multimodal), grounded predictions, and a redesigned Vue 3 workspace. Where MiroFish ends as a single-graph predictor, Sintetic begins as an agency-grade workspace for planners and digital media teams.
+
 Multi-client predictive workspace for planners and digital media teams. Each client has its own knowledge graph (briefs, studies, metrics, brand guidelines). On top of that graph, the platform runs **creative tests** (text / single image / carousel / video), **agent-based simulations**, and **predictions** grounded on the client's actual context.
 
-Built on top of an OASIS-derived multi-agent simulation engine and a custom Postgres + pgvector knowledge layer. Vision and text reasoning use GPT-4o; audio transcription uses Whisper.
+The simulation engine remains MiroFish — kept as the technical attribution throughout the codebase (env vars `MIROFISH_*`, badge `Powered by MiroFish`, OASIS internals). The multimodal stack (vision + audio) and the multi-client knowledge layer are Sintetic's contribution.
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
@@ -355,12 +357,39 @@ The base64 stays in memory only; persisted records (`backend/uploads/creative_te
 
 ---
 
-## Credits
+## Lineage and credits
 
-- **Sintetic Prediction AI** — product layer (multi-client, multimodal creative testing, knowledge graph) by [@gerriarte](https://github.com/gerriarte).
-- **MiroFish / OASIS engine** — the underlying multi-agent simulation engine. See [666ghj/MiroFish](https://github.com/666ghj/MiroFish) and [camel-ai/oasis](https://github.com/camel-ai/oasis) for the upstream simulation logic.
-- **GPT-4o + Whisper** — OpenAI for vision, chat and audio.
-- **pgvector** — vector index for the knowledge graph.
+Sintetic Prediction AI is **an evolution built on top of MiroFish**. The relationship between the two projects:
+
+| Layer                                                         | Owner            |
+| ------------------------------------------------------------- | ---------------- |
+| Multi-agent social simulation engine (OASIS adapter)          | **MiroFish** ([666ghj/MiroFish](https://github.com/666ghj/MiroFish)) |
+| Knowledge graph build (entity + relation extraction over text) | MiroFish (extended for Postgres+pgvector by Sintetic) |
+| Persona / Agent profile generation                            | MiroFish         |
+| Dual-platform simulation runner (Twitter + Reddit)            | MiroFish         |
+| Report Agent (post-simulation analysis)                       | MiroFish (kept; tools factory rewired for Postgres) |
+| **Per-client model + workspace + sidebar/topnav redesign**    | **Sintetic**     |
+| **Per-client knowledge graph + ingest_text + predict()**      | **Sintetic**     |
+| **Creative testing surface (R1–R6 multimodal)**               | **Sintetic**     |
+| **GPT-4o vision + Whisper integration**                       | **Sintetic**     |
+| **Postgres + pgvector backend (replaces Zep Cloud)**          | **Sintetic**     |
+
+If you remove the Sintetic layer, you have an enhanced MiroFish that runs on Postgres instead of Zep. If you remove MiroFish, you have a creative testing tool without the simulation engine that backs the agent runs.
+
+The codebase intentionally preserves MiroFish's identity in the technical layer:
+- Backend env vars are still prefixed `MIROFISH_*`.
+- The simulation runner and report agent log under `mirofish.*` namespaces.
+- `Powered by MiroFish` appears as an engine badge in the home view.
+- Internal Python packages and database table prefixes (`mirofish_<graph_id>`) reference MiroFish.
+
+The user-facing **product** is rebranded to **Sintetic Prediction AI**; the **engine attribution** remains MiroFish.
+
+### Other credits
+
+- **GPT-4o + Whisper** — OpenAI for vision, chat and audio transcription.
+- **pgvector** — vector index for the per-client knowledge graph.
+- **OASIS** ([camel-ai/oasis](https://github.com/camel-ai/oasis)) — the upstream multi-agent simulation framework that MiroFish wraps.
+- **Sintetic Prediction AI** — product layer by [@gerriarte](https://github.com/gerriarte).
 
 ---
 

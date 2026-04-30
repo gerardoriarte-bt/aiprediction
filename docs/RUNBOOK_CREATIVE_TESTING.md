@@ -2,6 +2,8 @@
 
 Operational reference for shipping the multi-client multimodal Creative Testing surface to production. Pair with `RUNBOOK_POSTGRES_BACKEND.md` for the persistence layer.
 
+> **Lineage.** Creative Testing is the product layer **Sintetic** adds on top of [MiroFish](https://github.com/666ghj/MiroFish). MiroFish provides the simulation engine (OASIS adapter, persona generation, dual-platform runner, report agent). Sintetic adds the per-client model, the multimodal creative testing pipeline (text / image / carousel / video) and the redesigned workspace. This runbook covers only the Sintetic layer; for simulation engine internals see the upstream MiroFish docs.
+
 ## What ships in this surface
 
 | Stage | Asset on each variant            | Extra dimensions added                                                      |
