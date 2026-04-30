@@ -1,0 +1,105 @@
+/* =========================================================
+   Lo.Bueno · Prediction AI — Design tokens
+   Single source of truth for the warm-paper palette + spacing.
+   Imported once from main.js.
+   ========================================================= */
+
+:root {
+  /* — Surface (warm paper) — */
+  --bg:           #f6f4ef;
+  --bg-2:         #efece4;
+  --surface:      #ffffff;
+  --surface-2:    #faf8f3;
+  --surface-3:    #f1ede4;
+
+  /* — Ink — */
+  --ink:          #1a1814;
+  --ink-2:        #3d3a32;
+  --ink-3:        #6b6757;
+  --ink-4:        #9a9686;
+  --ink-5:        #c4bfaf;
+
+  /* — Lines — */
+  --line:         #e5e0d3;
+  --line-2:       #d4cebd;
+  --line-strong:  #1a1814;
+
+  /* — Brand: Lo.Bueno signature — */
+  --brand:        #1f3a2e;        /* deep forest green */
+  --brand-2:      #2d5240;
+  --brand-soft:   #e3ebe5;
+  --brand-ink:    #ffffff;
+
+  /* — Signal accents — */
+  --signal:       #d97706;        /* sienna — primary action */
+  --signal-soft:  #fbe9c7;
+  --plum:         #6b3a52;
+  --plum-soft:    #efe1e8;
+
+  /* — Status — */
+  --ok:           #2f6b3a;
+  --ok-soft:      #d8e8d4;
+  --warn:         #a8650b;
+  --warn-soft:    #fae6c5;
+  --bad:          #8b2a1f;
+  --bad-soft:     #f3d6cf;
+
+  /* — Type families — */
+  --serif:        "Source Serif 4", "Source Serif Pro", Georgia, serif;
+  --sans:         "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono:         "JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+  /* — Radii — */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r:    10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+
+  /* — Spacing scale (compact mode overrides via [data-density="compact"]) — */
+  --pad-card:    24px;
+  --gap-section: 32px;
+  --row-h:       44px;
+  --font-body:   14px;
+
+  /* — Shadows — */
+  --shadow-1:   0 1px 0 rgba(26,24,20,.04), 0 1px 2px rgba(26,24,20,.04);
+  --shadow-2:   0 1px 0 rgba(26,24,20,.04), 0 6px 18px rgba(26,24,20,.06);
+  --shadow-pop: 0 8px 24px rgba(26,24,20,.10), 0 2px 6px rgba(26,24,20,.06);
+
+  /* — Z-index ladder — */
+  --z-nav:    20;
+  --z-popup:  40;
+  --z-modal:  50;
+  --z-toast:  60;
+}
+
+[data-density="compact"] {
+  --pad-card:    16px;
+  --gap-section: 20px;
+  --row-h:       36px;
+  --font-body:   13px;
+}
+
+/* — Body baseline. Vue views opt-in to the rest of the system. — */
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--font-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button { font-family: inherit; }
+a { color: inherit; }
+
+/* — Focus visible across the app — */
+:where(button, a, input, textarea, select, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
