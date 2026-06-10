@@ -21,7 +21,6 @@ except Exception:  # pragma: no cover - exercised only when zep is uninstalled
 from . import graph_bp
 from ..config import Config
 from ..services.ontology_generator import OntologyGenerator
-from ..services.graph_builder import GraphBuilderService
 from ..services.text_processor import TextProcessor
 from ..utils.file_parser import FileParser
 from ..utils.logger import get_logger
@@ -322,16 +321,10 @@ def build_graph():
     try:
         logger.info("=== 开始构建图谱 ===")
 
-        # Config check is backend-aware: Zep build needs ZEP_API_KEY,
-        # Postgres build needs DATABASE_URL. If both are missing for the
-        # active backend, refuse fast with an actionable message.
+        # Config check: Postgres backend requires DATABASE_URL.
         errors = []
-        if Config.GRAPH_BACKEND == 'postgres':
-            if not Config.DATABASE_URL:
-                errors.append("DATABASE_URL is not set (required when GRAPH_BACKEND=postgres).")
-        else:
-            if not Config.ZEP_API_KEY:
-                errors.append(t('api.zepApiKeyMissing'))
+        if not Config.DATABASE_URL:
+            errors.append("DATABASE_URL is not set (required for the Postgres graph backend).")
         if errors:
             logger.error(f"配置错误: {errors}")
             return jsonify({
@@ -431,180 +424,64 @@ def build_graph():
                     message=t('progress.initGraphService')
                 )
 
-                # ===== Postgres branch (additive, opt-in via GRAPH_BACKEND=postgres) =====
-                # When the flag is set we run a parallel path that uses the
-                # Postgres+pgvector backend. The Zep flow below is kept byte-
-                # identical so default behaviour does not change.
-                if Config.GRAPH_BACKEND == 'postgres':
-                    from ..repositories.graph import get_graph_backend
-                    backend = get_graph_backend()
+                from ..repositories.graph import get_graph_backend
+                backend = get_graph_backend()
 
-                    task_manager.update_task(
-                        task_id, message=t('progress.textChunking'), progress=5
-                    )
-                    pg_chunks = TextProcessor.split_text(
-                        text, chunk_size=chunk_size, overlap=chunk_overlap
-                    )
-                    pg_total = len(pg_chunks)
-
-                    task_manager.update_task(
-                        task_id, message=t('progress.creatingZepGraph'), progress=10
-                    )
-                    pg_graph_id = backend.create_graph(name=graph_name)
-                    project.graph_id = pg_graph_id
-                    ProjectManager.save_project(project)
-
-                    task_manager.update_task(
-                        task_id, message=t('progress.settingOntology'), progress=15
-                    )
-                    backend.set_ontology(pg_graph_id, ontology)
-
-                    def pg_progress_callback(msg, progress_ratio):
-                        progress = 15 + int(progress_ratio * 75)  # 15% - 90%
-                        task_manager.update_task(
-                            task_id, message=msg, progress=progress
-                        )
-
-                    task_manager.update_task(
-                        task_id,
-                        message=t('progress.addingChunks', count=pg_total),
-                        progress=15,
-                    )
-                    episode_uuids = backend.add_text_batches(
-                        pg_graph_id,
-                        pg_chunks,
-                        batch_size=3,
-                        progress_callback=pg_progress_callback,
-                    )
-                    # Postgres ingest is synchronous; wait_for_episodes is a
-                    # no-op but we call it to keep the contract identical.
-                    backend.wait_for_episodes(episode_uuids, None)
-
-                    task_manager.update_task(
-                        task_id,
-                        message=t('progress.fetchingGraphData'),
-                        progress=95,
-                    )
-                    pg_graph_data = backend.get_graph_data(pg_graph_id)
-
-                    project.status = ProjectStatus.GRAPH_COMPLETED
-                    ProjectManager.save_project(project)
-
-                    pg_node_count = pg_graph_data.get("node_count", 0)
-                    pg_edge_count = pg_graph_data.get("edge_count", 0)
-                    build_logger.info(
-                        f"[{task_id}] 图谱构建完成 (postgres): graph_id={pg_graph_id}, "
-                        f"节点={pg_node_count}, 边={pg_edge_count}"
-                    )
-                    task_manager.update_task(
-                        task_id,
-                        status=TaskStatus.COMPLETED,
-                        message=t('progress.graphBuildComplete'),
-                        progress=100,
-                        result={
-                            "project_id": project_id,
-                            "graph_id": pg_graph_id,
-                            "node_count": pg_node_count,
-                            "edge_count": pg_edge_count,
-                            "chunk_count": pg_total,
-                            "backend": "postgres",
-                        },
-                    )
-                    return
-                # ===== End Postgres branch ============================================
-
-                # 创建图谱构建服务
-                builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
-                
-                # 分块
                 task_manager.update_task(
-                    task_id,
-                    message=t('progress.textChunking'),
-                    progress=5
+                    task_id, message=t('progress.textChunking'), progress=5
                 )
-                chunks = TextProcessor.split_text(
-                    text, 
-                    chunk_size=chunk_size, 
-                    overlap=chunk_overlap
+                pg_chunks = TextProcessor.split_text(
+                    text, chunk_size=chunk_size, overlap=chunk_overlap
                 )
-                total_chunks = len(chunks)
-                
-                # 创建图谱
+                pg_total = len(pg_chunks)
+
                 task_manager.update_task(
-                    task_id,
-                    message=t('progress.creatingZepGraph'),
-                    progress=10
+                    task_id, message=t('progress.creatingZepGraph'), progress=10
                 )
-                graph_id = builder.create_graph(name=graph_name)
-                
-                # 更新项目的graph_id
-                project.graph_id = graph_id
+                pg_graph_id = backend.create_graph(name=graph_name)
+                project.graph_id = pg_graph_id
                 ProjectManager.save_project(project)
-                
-                # 设置本体
+
                 task_manager.update_task(
-                    task_id,
-                    message=t('progress.settingOntology'),
-                    progress=15
+                    task_id, message=t('progress.settingOntology'), progress=15
                 )
-                builder.set_ontology(graph_id, ontology)
-                
-                # 添加文本（progress_callback 签名是 (msg, progress_ratio)）
-                def add_progress_callback(msg, progress_ratio):
-                    progress = 15 + int(progress_ratio * 40)  # 15% - 55%
+                backend.set_ontology(pg_graph_id, ontology)
+
+                def pg_progress_callback(msg, progress_ratio):
+                    progress = 15 + int(progress_ratio * 75)  # 15% - 90%
                     task_manager.update_task(
-                        task_id,
-                        message=msg,
-                        progress=progress
+                        task_id, message=msg, progress=progress
                     )
-                
+
                 task_manager.update_task(
                     task_id,
-                    message=t('progress.addingChunks', count=total_chunks),
-                    progress=15
+                    message=t('progress.addingChunks', count=pg_total),
+                    progress=15,
                 )
-                
-                episode_uuids = builder.add_text_batches(
-                    graph_id, 
-                    chunks,
+                episode_uuids = backend.add_text_batches(
+                    pg_graph_id,
+                    pg_chunks,
                     batch_size=3,
-                    progress_callback=add_progress_callback
+                    progress_callback=pg_progress_callback,
                 )
-                
-                # 等待Zep处理完成（查询每个episode的processed状态）
-                task_manager.update_task(
-                    task_id,
-                    message=t('progress.waitingZepProcess'),
-                    progress=55
-                )
-                
-                def wait_progress_callback(msg, progress_ratio):
-                    progress = 55 + int(progress_ratio * 35)  # 55% - 90%
-                    task_manager.update_task(
-                        task_id,
-                        message=msg,
-                        progress=progress
-                    )
-                
-                builder._wait_for_episodes(episode_uuids, wait_progress_callback)
-                
-                # 获取图谱数据
+                backend.wait_for_episodes(episode_uuids, None)
+
                 task_manager.update_task(
                     task_id,
                     message=t('progress.fetchingGraphData'),
-                    progress=95
+                    progress=95,
                 )
-                graph_data = builder.get_graph_data(graph_id)
-                
-                # 更新项目状态
+                pg_graph_data = backend.get_graph_data(pg_graph_id)
+
                 project.status = ProjectStatus.GRAPH_COMPLETED
                 ProjectManager.save_project(project)
-                
-                node_count = graph_data.get("node_count", 0)
-                edge_count = graph_data.get("edge_count", 0)
-                build_logger.info(f"[{task_id}] 图谱构建完成: graph_id={graph_id}, 节点={node_count}, 边={edge_count}")
-                
-                # 完成
+
+                pg_node_count = pg_graph_data.get("node_count", 0)
+                pg_edge_count = pg_graph_data.get("edge_count", 0)
+                build_logger.info(
+                    f"[{task_id}] 图谱构建完成: graph_id={pg_graph_id}, "
+                    f"节点={pg_node_count}, 边={pg_edge_count}"
+                )
                 task_manager.update_task(
                     task_id,
                     status=TaskStatus.COMPLETED,
@@ -612,11 +489,12 @@ def build_graph():
                     progress=100,
                     result={
                         "project_id": project_id,
-                        "graph_id": graph_id,
-                        "node_count": node_count,
-                        "edge_count": edge_count,
-                        "chunk_count": total_chunks
-                    }
+                        "graph_id": pg_graph_id,
+                        "node_count": pg_node_count,
+                        "edge_count": pg_edge_count,
+                        "chunk_count": pg_total,
+                        "backend": "postgres",
+                    },
                 )
                 
             except ApiError as e:
@@ -716,25 +594,10 @@ def get_graph_data(graph_id: str):
     fallback for older graphs persisted in Zep.
     """
     try:
-        if Config.GRAPH_BACKEND == 'postgres':
-            from ..repositories.graph import get_graph_backend
-            backend = get_graph_backend()
-            graph_data = backend.get_graph_data(graph_id)
-            return jsonify({"success": True, "data": graph_data})
-
-        if not Config.ZEP_API_KEY:
-            return jsonify({
-                "success": False,
-                "error": t('api.zepApiKeyMissing')
-            }), 500
-
-        builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
-        graph_data = builder.get_graph_data(graph_id)
-
-        return jsonify({
-            "success": True,
-            "data": graph_data
-        })
+        from ..repositories.graph import get_graph_backend
+        backend = get_graph_backend()
+        graph_data = backend.get_graph_data(graph_id)
+        return jsonify({"success": True, "data": graph_data})
 
     except Exception as e:
         return jsonify({
@@ -750,20 +613,15 @@ def delete_graph(graph_id: str):
     删除Zep图谱
     """
     try:
-        if not Config.ZEP_API_KEY:
-            return jsonify({
-                "success": False,
-                "error": t('api.zepApiKeyMissing')
-            }), 500
-        
-        builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
-        builder.delete_graph(graph_id)
-        
+        from ..repositories.graph import get_graph_backend
+        backend = get_graph_backend()
+        backend.delete_graph(graph_id)
+
         return jsonify({
             "success": True,
             "message": t('api.graphDeleted', id=graph_id)
         })
-        
+
     except Exception as e:
         return jsonify({
             "success": False,

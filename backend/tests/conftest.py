@@ -34,10 +34,12 @@ def flask_app():
     """
     from flask import Flask
     from app.api import report_bp
+    from app.utils.limiter import limiter
 
     app = Flask(__name__)
     app.register_blueprint(report_bp, url_prefix="/api/report")
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, RATELIMIT_ENABLED=False)
+    limiter.init_app(app)
     return app
 
 

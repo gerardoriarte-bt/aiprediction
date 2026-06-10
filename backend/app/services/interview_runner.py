@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_locale, t
 from ..utils.logger import get_logger
-from .zep_tools import AgentInterview, InterviewResult
+from .graph_domain import AgentInterview, InterviewResult
 
 
 logger = get_logger("mirofish.interview_runner")

@@ -19,6 +19,7 @@ from flask import jsonify, request, send_from_directory
 from . import report_bp
 from ..config import Config
 from ..models.task import TaskManager, TaskStatus
+from ..utils.limiter import limiter
 from ..services.creative_testing import (
     CreativeTestStore,
     generate_mock_result,
@@ -190,6 +191,7 @@ def _attach_variant_images(test_id: str, parsed_request, files_by_label):
 
 
 @report_bp.route("/creative-test/generate", methods=["POST"])
+@limiter.limit("10 per minute")
 def creative_test_generate():
     """Inicia una corrida de creative testing.
 
@@ -335,6 +337,7 @@ def creative_test_health():
 
 
 @report_bp.route("/creative-test/start", methods=["POST"])
+@limiter.limit("5 per minute")
 def creative_test_start():
     """Lanza una corrida async y devuelve test_id + task_id de inmediato.
 

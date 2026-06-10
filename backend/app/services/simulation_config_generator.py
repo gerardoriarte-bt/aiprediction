@@ -21,7 +21,7 @@ from openai import OpenAI
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
-from .zep_entity_reader import EntityNode, ZepEntityReader
+from .graph_domain import EntityNode
 
 logger = get_logger('mirofish.simulation_config')
 
@@ -521,13 +521,13 @@ class SimulationConfigGenerator:
             
             try:
                 return json.loads(json_str)
-            except:
+            except json.JSONDecodeError:
                 # 尝试移除所有控制字符
                 json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_str)
                 json_str = re.sub(r'\s+', ' ', json_str)
                 try:
                     return json.loads(json_str)
-                except:
+                except json.JSONDecodeError:
                     pass
         
         return None

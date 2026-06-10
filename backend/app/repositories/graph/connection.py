@@ -2,7 +2,7 @@
 Lazy psycopg connection helpers for the Postgres graph backend.
 
 Only imports psycopg when actually called, so installs that don't include
-the optional [postgres] extra still work for the default Zep flow.
+the optional [postgres] extra still fail gracefully.
 """
 
 from __future__ import annotations
@@ -27,8 +27,7 @@ def _require_psycopg():
     except ImportError as e:
         raise RuntimeError(
             "psycopg is not installed. Add the [postgres] extra to your "
-            "backend env (pip install 'psycopg[binary]' psycopg-pool pgvector) "
-            "or set GRAPH_BACKEND=zep to keep the legacy flow."
+            "backend env (pip install 'psycopg[binary]' psycopg-pool pgvector)."
         ) from e
 
 
@@ -40,7 +39,7 @@ def get_pool():
 
     if not Config.DATABASE_URL:
         raise RuntimeError(
-            "DATABASE_URL is not set. Required when GRAPH_BACKEND=postgres."
+            "DATABASE_URL is not set. Required for the Postgres graph backend."
         )
 
     ConnectionPool = _require_psycopg()

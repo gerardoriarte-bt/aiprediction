@@ -132,23 +132,15 @@ def _embedding_health() -> Dict[str, Any]:
 def graph_backend_health():
     """One-stop health check for the graph backend stack."""
     try:
-        backend = (Config.GRAPH_BACKEND or "zep").lower()
         payload: Dict[str, Any] = {
-            "backend": backend,
+            "backend": "postgres",
             "embedding": _embedding_health(),
             "creative_testing_enabled": Config.CREATIVE_TESTING_ENABLED,
         }
 
-        if backend == "postgres":
-            payload["postgres"] = _postgres_health()
-            if payload["postgres"].get("reachable"):
-                payload["counts"] = _postgres_table_counts()
-        else:
-            payload["postgres"] = {
-                "reachable": False,
-                "skipped": "GRAPH_BACKEND != postgres",
-            }
-            payload["zep_api_key_present"] = bool(Config.ZEP_API_KEY)
+        payload["postgres"] = _postgres_health()
+        if payload["postgres"].get("reachable"):
+            payload["counts"] = _postgres_table_counts()
 
         # Lazy import so this endpoint stays cheap.
         try:
@@ -159,11 +151,8 @@ def graph_backend_health():
 
         ok = (
             payload["embedding"].get("reachable", False)
-            if backend == "postgres"
-            else True
+            and payload["postgres"].get("reachable", False)
         )
-        if backend == "postgres":
-            ok = ok and payload["postgres"].get("reachable", False)
 
         return jsonify({"success": True, "ok": ok, "data": payload})
     except Exception as e:
@@ -190,7 +179,7 @@ def graph_backend_metrics():
             {
                 "success": True,
                 "data": {
-                    "backend": Config.GRAPH_BACKEND,
+                    "backend": "postgres",
                     "tools": get_metrics_snapshot(),
                 },
             }

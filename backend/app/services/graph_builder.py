@@ -15,9 +15,48 @@ from zep_cloud import EpisodeData, EntityEdgeSourceTarget
 
 from ..config import Config
 from ..models.task import TaskManager, TaskStatus
-from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
 from .text_processor import TextProcessor
 from ..utils.locale import t, get_locale, set_locale
+
+
+def _fetch_all_nodes(client: Zep, graph_id: str, page_size: int = 100) -> list:
+    """Inline pagination helper for Zep nodes (replaces zep_paging utility)."""
+    all_nodes: list = []
+    cursor = None
+    while True:
+        kwargs: dict = {"limit": page_size}
+        if cursor is not None:
+            kwargs["uuid_cursor"] = cursor
+        batch = client.graph.node.get_by_graph_id(graph_id, **kwargs)
+        if not batch:
+            break
+        all_nodes.extend(batch)
+        if len(batch) < page_size:
+            break
+        cursor = getattr(batch[-1], "uuid_", None) or getattr(batch[-1], "uuid", None)
+        if cursor is None:
+            break
+    return all_nodes
+
+
+def _fetch_all_edges(client: Zep, graph_id: str, page_size: int = 100) -> list:
+    """Inline pagination helper for Zep edges (replaces zep_paging utility)."""
+    all_edges: list = []
+    cursor = None
+    while True:
+        kwargs: dict = {"limit": page_size}
+        if cursor is not None:
+            kwargs["uuid_cursor"] = cursor
+        batch = client.graph.edge.get_by_graph_id(graph_id, **kwargs)
+        if not batch:
+            break
+        all_edges.extend(batch)
+        if len(batch) < page_size:
+            break
+        cursor = getattr(batch[-1], "uuid_", None) or getattr(batch[-1], "uuid", None)
+        if cursor is None:
+            break
+    return all_edges
 
 
 @dataclass
@@ -44,10 +83,10 @@ class GraphBuilderService:
     """
     
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or Config.ZEP_API_KEY
+        self.api_key = api_key
         if not self.api_key:
-            raise ValueError("ZEP_API_KEY 未配置")
-        
+            raise ValueError("ZEP API key not provided")
+
         self.client = Zep(api_key=self.api_key)
         self.task_manager = TaskManager()
     
@@ -403,10 +442,10 @@ class GraphBuilderService:
     def _get_graph_info(self, graph_id: str) -> GraphInfo:
         """获取图谱信息"""
         # 获取节点（分页）
-        nodes = fetch_all_nodes(self.client, graph_id)
+        nodes = _fetch_all_nodes(self.client, graph_id)
 
         # 获取边（分页）
-        edges = fetch_all_edges(self.client, graph_id)
+        edges = _fetch_all_edges(self.client, graph_id)
 
         # 统计实体类型
         entity_types = set()
@@ -433,8 +472,8 @@ class GraphBuilderService:
         Returns:
             包含nodes和edges的字典，包括时间信息、属性等详细数据
         """
-        nodes = fetch_all_nodes(self.client, graph_id)
-        edges = fetch_all_edges(self.client, graph_id)
+        nodes = _fetch_all_nodes(self.client, graph_id)
+        edges = _fetch_all_edges(self.client, graph_id)
 
         # 创建节点映射用于获取节点名称
         node_map = {}

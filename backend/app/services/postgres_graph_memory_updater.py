@@ -32,7 +32,7 @@ from ..utils.locale import get_locale, set_locale
 from ..utils.logger import get_logger
 # Reuse the dataclass and its locale-aware to_episode_text() so neither
 # backend invents its own activity language.
-from .zep_graph_memory_updater import AgentActivity
+from .graph_domain import AgentActivity
 
 
 logger = get_logger("mirofish.postgres_graph_memory_updater")

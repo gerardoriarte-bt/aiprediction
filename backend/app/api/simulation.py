@@ -9,7 +9,6 @@ from flask import request, jsonify, send_file
 
 from . import simulation_bp
 from ..config import Config
-from ..services.zep_entity_reader import ZepEntityReader  # kept for type-only callers
 from ..services.entity_reader import get_entity_reader, assert_graph_backend_ready
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
@@ -962,7 +961,7 @@ def get_simulation_history():
             try:
                 created_date = sim_dict.get("created_at", "")[:10]
                 sim_dict["created_date"] = created_date
-            except:
+            except (TypeError, AttributeError):
                 sim_dict["created_date"] = ""
             
             enriched_simulations.append(sim_dict)

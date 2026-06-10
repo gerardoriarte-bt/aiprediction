@@ -16,12 +16,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from openai import OpenAI
-from zep_cloud.client import Zep
 
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, get_locale, set_locale, t
-from .zep_entity_reader import EntityNode, ZepEntityReader
+from .graph_domain import EntityNode
 
 logger = get_logger('mirofish.oasis_profile')
 
@@ -179,7 +178,7 @@ class OasisProfileGenerator:
     ]
     
     def __init__(
-        self, 
+        self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
@@ -189,25 +188,19 @@ class OasisProfileGenerator:
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
         self.model_name = model_name or Config.LLM_MODEL_NAME
-        
+
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
-        
+
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url
         )
-        
-        # Zep客户端用于检索丰富上下文
-        self.zep_api_key = zep_api_key or Config.ZEP_API_KEY
+
+        # zep_api_key kept for API compat but no longer used (Postgres backend)
+        self.zep_api_key = zep_api_key
         self.zep_client = None
         self.graph_id = graph_id
-        
-        if self.zep_api_key:
-            try:
-                self.zep_client = Zep(api_key=self.zep_api_key)
-            except Exception as e:
-                logger.warning(f"Zep客户端初始化失败: {e}")
     
     def generate_profile_from_entity(
         self, 
@@ -288,130 +281,9 @@ class OasisProfileGenerator:
         Hybrid search to enrich an entity with related facts and neighbour
         summaries.
 
-        - When Config.GRAPH_BACKEND == 'postgres', delegate to the unified
-          tools factory (Postgres + pgvector). One call replaces the legacy
-          dual Zep search (edges + nodes).
-        - Otherwise, fall back to the original Zep dual-search path so the
-          legacy default flow stays byte-identical.
+        Delegate to the Postgres tools factory (PostgresToolsService).
         """
-        # Phase 6 — Postgres branch (additive, opt-in).
-        if Config.GRAPH_BACKEND == 'postgres':
-            return self._search_postgres_for_entity(entity)
-
-        import concurrent.futures
-
-        if not self.zep_client:
-            return {"facts": [], "node_summaries": [], "context": ""}
-
-        entity_name = entity.name
-
-        results = {
-            "facts": [],
-            "node_summaries": [],
-            "context": ""
-        }
-
-        # 必须有graph_id才能进行搜索
-        if not self.graph_id:
-            logger.debug(f"跳过Zep检索：未设置graph_id")
-            return results
-
-        comprehensive_query = t('progress.zepSearchQuery', name=entity_name)
-        
-        def search_edges():
-            """搜索边（事实/关系）- 带重试机制"""
-            max_retries = 3
-            last_exception = None
-            delay = 2.0
-            
-            for attempt in range(max_retries):
-                try:
-                    return self.zep_client.graph.search(
-                        query=comprehensive_query,
-                        graph_id=self.graph_id,
-                        limit=30,
-                        scope="edges",
-                        reranker="rrf"
-                    )
-                except Exception as e:
-                    last_exception = e
-                    if attempt < max_retries - 1:
-                        logger.debug(f"Zep边搜索第 {attempt + 1} 次失败: {str(e)[:80]}, 重试中...")
-                        time.sleep(delay)
-                        delay *= 2
-                    else:
-                        logger.debug(f"Zep边搜索在 {max_retries} 次尝试后仍失败: {e}")
-            return None
-        
-        def search_nodes():
-            """搜索节点（实体摘要）- 带重试机制"""
-            max_retries = 3
-            last_exception = None
-            delay = 2.0
-            
-            for attempt in range(max_retries):
-                try:
-                    return self.zep_client.graph.search(
-                        query=comprehensive_query,
-                        graph_id=self.graph_id,
-                        limit=20,
-                        scope="nodes",
-                        reranker="rrf"
-                    )
-                except Exception as e:
-                    last_exception = e
-                    if attempt < max_retries - 1:
-                        logger.debug(f"Zep节点搜索第 {attempt + 1} 次失败: {str(e)[:80]}, 重试中...")
-                        time.sleep(delay)
-                        delay *= 2
-                    else:
-                        logger.debug(f"Zep节点搜索在 {max_retries} 次尝试后仍失败: {e}")
-            return None
-        
-        try:
-            # 并行执行edges和nodes搜索
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                edge_future = executor.submit(search_edges)
-                node_future = executor.submit(search_nodes)
-                
-                # 获取结果
-                edge_result = edge_future.result(timeout=30)
-                node_result = node_future.result(timeout=30)
-            
-            # 处理边搜索结果
-            all_facts = set()
-            if edge_result and hasattr(edge_result, 'edges') and edge_result.edges:
-                for edge in edge_result.edges:
-                    if hasattr(edge, 'fact') and edge.fact:
-                        all_facts.add(edge.fact)
-            results["facts"] = list(all_facts)
-            
-            # 处理节点搜索结果
-            all_summaries = set()
-            if node_result and hasattr(node_result, 'nodes') and node_result.nodes:
-                for node in node_result.nodes:
-                    if hasattr(node, 'summary') and node.summary:
-                        all_summaries.add(node.summary)
-                    if hasattr(node, 'name') and node.name and node.name != entity_name:
-                        all_summaries.add(f"相关实体: {node.name}")
-            results["node_summaries"] = list(all_summaries)
-            
-            # 构建综合上下文
-            context_parts = []
-            if results["facts"]:
-                context_parts.append("事实信息:\n" + "\n".join(f"- {f}" for f in results["facts"][:20]))
-            if results["node_summaries"]:
-                context_parts.append("相关实体:\n" + "\n".join(f"- {s}" for s in results["node_summaries"][:10]))
-            results["context"] = "\n\n".join(context_parts)
-            
-            logger.info(f"Zep混合检索完成: {entity_name}, 获取 {len(results['facts'])} 条事实, {len(results['node_summaries'])} 个相关节点")
-            
-        except concurrent.futures.TimeoutError:
-            logger.warning(f"Zep检索超时 ({entity_name})")
-        except Exception as e:
-            logger.warning(f"Zep检索失败 ({entity_name}): {e}")
-
-        return results
+        return self._search_postgres_for_entity(entity)
 
     def _search_postgres_for_entity(self, entity: EntityNode) -> Dict[str, Any]:
         """
@@ -714,9 +586,9 @@ class OasisProfileGenerator:
                     result = json.loads(json_str)
                     result["_fixed"] = True
                     return result
-                except:
+                except (json.JSONDecodeError, ValueError):
                     pass
-        
+
         # 6. 尝试从内容中提取部分信息
         bio_match = re.search(r'"bio"\s*:\s*"([^"]*)"', content)
         persona_match = re.search(r'"persona"\s*:\s*"([^"]*)', content)  # 可能被截断
@@ -1021,10 +893,9 @@ class OasisProfileGenerator:
                 )
                 return idx, fallback_profile, str(e)
         
-        logger.info(f"开始并行生成 {total} 个Agent人设（并行数: {parallel_count}）...")
-        print(f"\n{'='*60}")
-        print(f"开始生成Agent人设 - 共 {total} 个实体，并行数: {parallel_count}")
-        print(f"{'='*60}\n")
+        logger.info(f"{'='*60}")
+        logger.info(f"开始生成Agent人设 - 共 {total} 个实体，并行数: {parallel_count}")
+        logger.info(f"{'='*60}")
         
         # 使用线程池并行执行
         with concurrent.futures.ThreadPoolExecutor(max_workers=parallel_count) as executor:
@@ -1078,9 +949,9 @@ class OasisProfileGenerator:
                     # 实时写入文件（即使是备用人设）
                     save_profiles_realtime()
         
-        print(f"\n{'='*60}")
-        print(f"人设生成完成！共生成 {len([p for p in profiles if p])} 个Agent")
-        print(f"{'='*60}\n")
+        logger.info(f"{'='*60}")
+        logger.info(f"人设生成完成！共生成 {len([p for p in profiles if p])} 个Agent")
+        logger.info(f"{'='*60}")
         
         return profiles
     
@@ -1112,8 +983,7 @@ class OasisProfileGenerator:
         
         output = "\n".join(output_lines)
         
-        # 只输出到控制台（避免重复，logger不再输出完整内容）
-        print(output)
+        logger.info(output)
     
     def save_profiles(
         self,

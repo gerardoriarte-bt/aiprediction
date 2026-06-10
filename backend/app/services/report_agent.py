@@ -22,13 +22,13 @@ from ..config import Config
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
-from .zep_tools import (
-    ZepToolsService, 
-    SearchResult, 
-    InsightForgeResult, 
+from .graph_domain import (
+    SearchResult,
+    InsightForgeResult,
     PanoramaResult,
-    InterviewResult
+    InterviewResult,
 )
+from .graph_tools import get_graph_tools
 
 logger = get_logger('mirofish.report_agent')
 
@@ -882,37 +882,33 @@ class ReportAgent:
     MAX_TOOL_CALLS_PER_CHAT = 2
     
     def __init__(
-        self, 
+        self,
         graph_id: str,
         simulation_id: str,
         simulation_requirement: str,
         llm_client: Optional[LLMClient] = None,
-        zep_tools: Optional[ZepToolsService] = None
+        zep_tools=None
     ):
         """
         初始化Report Agent
-        
+
         Args:
             graph_id: 图谱ID
             simulation_id: 模拟ID
             simulation_requirement: 模拟需求描述
             llm_client: LLM客户端（可选）
-            zep_tools: Zep工具服务（可选）
+            zep_tools: 工具服务（可选，兼容旧接口）
         """
         self.graph_id = graph_id
         self.simulation_id = simulation_id
         self.simulation_requirement = simulation_requirement
-        
+
         self.llm = llm_client or LLMClient()
-        # Tool selection honours Config.GRAPH_BACKEND. When 'postgres' the
-        # PostgresToolsService implements the same public API, so the rest
-        # of this class continues to call self.zep_tools.X without changes.
         # The attribute name stays 'zep_tools' for backward compat with any
         # external caller that injected one explicitly via the constructor.
         if zep_tools is not None:
             self.zep_tools = zep_tools
         else:
-            from .graph_tools import get_graph_tools
             self.zep_tools = get_graph_tools()
         
         # 工具定义

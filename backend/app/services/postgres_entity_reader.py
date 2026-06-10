@@ -20,7 +20,7 @@ from ..repositories.graph.repos import (
 )
 from ..utils.logger import get_logger
 # Reuse the dataclasses so type identity holds across backends.
-from .zep_entity_reader import EntityNode, FilteredEntities
+from .graph_domain import EntityNode, FilteredEntities
 
 
 logger = get_logger("mirofish.postgres_entity_reader")

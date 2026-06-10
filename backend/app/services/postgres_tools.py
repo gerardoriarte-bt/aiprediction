@@ -31,7 +31,7 @@ from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from .embeddings import EmbeddingError, get_embedding_client
 from .graph_metrics import time_tool
-from .zep_tools import (
+from .graph_domain import (
     EdgeInfo,
     InsightForgeResult,
     NodeInfo,

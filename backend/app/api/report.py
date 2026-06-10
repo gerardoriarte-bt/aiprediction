@@ -10,6 +10,7 @@ from flask import request, jsonify, send_file
 
 from . import report_bp
 from ..config import Config
+from ..utils.limiter import limiter
 from ..services.report_agent import ReportAgent, ReportManager, ReportStatus
 from ..services.simulation_manager import SimulationManager
 from ..models.project import ProjectManager
@@ -23,6 +24,7 @@ logger = get_logger('mirofish.api.report')
 # ============== 报告生成接口 ==============
 
 @report_bp.route('/generate', methods=['POST'])
+@limiter.limit("3 per minute")
 def generate_report():
     """
     生成模拟分析报告（异步任务）

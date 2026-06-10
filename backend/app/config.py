@@ -4,6 +4,7 @@
 """
 
 import os
+import secrets
 from dotenv import load_dotenv
 
 # 加载项目根目录的 .env 文件
@@ -21,8 +22,10 @@ class Config:
     """Flask配置类"""
     
     # Flask配置
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'mirofish-secret-key')
-    DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
+    # If SECRET_KEY is not set, generate a random one (sessions won't persist across restarts).
+    # Always set SECRET_KEY explicitly in production.
+    SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+    DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     
     # JSON配置 - 禁用ASCII转义，让中文直接显示（而不是 \uXXXX 格式）
     JSON_AS_ASCII = False
@@ -31,9 +34,6 @@ class Config:
     LLM_API_KEY = os.environ.get('LLM_API_KEY')
     LLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'https://api.openai.com/v1')
     LLM_MODEL_NAME = os.environ.get('LLM_MODEL_NAME', 'gpt-4o-mini')
-    
-    # Zep配置
-    ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
     
     # 文件上传与 multipart 表单
     # Flask 默认 MAX_FORM_MEMORY_SIZE 仅 500KB，较大的 simulation_requirement 会触发 413。
@@ -67,19 +67,20 @@ class Config:
     REPORT_AGENT_MAX_REFLECTION_ROUNDS = int(os.environ.get('REPORT_AGENT_MAX_REFLECTION_ROUNDS', '2'))
     REPORT_AGENT_TEMPERATURE = float(os.environ.get('REPORT_AGENT_TEMPERATURE', '0.5'))
 
+    # CORS — restrict to configured origins (comma-separated). Default: localhost dev server.
+    CORS_ORIGINS = [
+        o.strip()
+        for o in os.environ.get('CORS_ORIGINS', 'http://localhost:5173').split(',')
+        if o.strip()
+    ]
+
     # Creative Testing (additive, opt-in). Default OFF: existing flow unchanged.
     # Phase 1 of ROADMAP_CREATIVE_TESTING_90D. When False, dedicated endpoints
     # respond 404 so the surface remains invisible to current users.
     CREATIVE_TESTING_ENABLED = os.environ.get('CREATIVE_TESTING_ENABLED', 'False').lower() == 'true'
     CREATIVE_TESTING_MODE = os.environ.get('CREATIVE_TESTING_MODE', 'mock')  # mock | live
 
-    # Graph backend selector (Zep -> Postgres migration, additive).
-    # Default keeps Zep so existing flow is unchanged. When 'postgres',
-    # validate() requires DATABASE_URL and embedding settings instead of
-    # ZEP_API_KEY. See docs/IMPLEMENTATION_ZEP_TO_POSTGRES.md.
-    GRAPH_BACKEND = os.environ.get('GRAPH_BACKEND', 'zep').lower()  # zep | postgres
-
-    # Postgres connection (only required when GRAPH_BACKEND=postgres).
+    # Postgres connection.
     DATABASE_URL = os.environ.get('DATABASE_URL')
 
     # Embedding provider for the Postgres backend.
@@ -104,22 +105,14 @@ class Config:
         if not cls.LLM_API_KEY:
             errors.append("LLM_API_KEY 未配置")
 
-        if cls.GRAPH_BACKEND == 'zep':
-            if not cls.ZEP_API_KEY:
-                errors.append("ZEP_API_KEY 未配置 (required when GRAPH_BACKEND=zep)")
-        elif cls.GRAPH_BACKEND == 'postgres':
-            if not cls.DATABASE_URL:
-                errors.append("DATABASE_URL 未配置 (required when GRAPH_BACKEND=postgres)")
-            if cls.EMBEDDING_PROVIDER not in ('openai', 'ollama'):
-                errors.append(
-                    f"EMBEDDING_PROVIDER='{cls.EMBEDDING_PROVIDER}' is invalid; expected 'openai' or 'ollama'"
-                )
-            if cls.EMBEDDING_DIM <= 0:
-                errors.append("EMBEDDING_DIM must be a positive integer")
-        else:
+        if not cls.DATABASE_URL:
+            errors.append("DATABASE_URL 未配置 (required for the Postgres graph backend)")
+        if cls.EMBEDDING_PROVIDER not in ('openai', 'ollama'):
             errors.append(
-                f"GRAPH_BACKEND='{cls.GRAPH_BACKEND}' is invalid; expected 'zep' or 'postgres'"
+                f"EMBEDDING_PROVIDER='{cls.EMBEDDING_PROVIDER}' is invalid; expected 'openai' or 'ollama'"
             )
+        if cls.EMBEDDING_DIM <= 0:
+            errors.append("EMBEDDING_DIM must be a positive integer")
 
         return errors
 
