@@ -105,7 +105,12 @@ def _persist_video_and_extract(test_id: str, label: str, file_storage):
         extraction = extract(out_path, work_dir)
     except Exception as e:
         logger.warning(f"video extraction failed for {label}: {e}")
-        return video_url, [], None
+        return (
+            video_url,
+            [],
+            None,
+            f"Video extraction failed for variant '{label}': frames and transcript unavailable.",
+        )
 
     # Move extracted frames into the per-test images dir with predictable
     # filenames so the slide endpoint serves them.
@@ -133,7 +138,7 @@ def _persist_video_and_extract(test_id: str, label: str, file_storage):
     except OSError:
         pass
 
-    return video_url, slides_payload, extraction.audio_transcript
+    return video_url, slides_payload, extraction.audio_transcript, None
 
 
 def _persist_slide(test_id: str, label: str, slide_idx: int, file_storage) -> tuple[str, str]:
@@ -422,6 +427,7 @@ def creative_test_start():
         mode = Config.CREATIVE_TESTING_MODE if Config.CREATIVE_TESTING_MODE in ("mock", "live") else "mock"
 
         test_id = CreativeTestStore.new_id()
+        extraction_warnings: List[str] = []
 
         # R4/R5 — multipart variant images. Two key shapes are accepted per
         # variant label L:
@@ -471,11 +477,13 @@ def creative_test_start():
                 if not vid or not getattr(vid, "filename", None):
                     continue
                 try:
-                    video_url, slide_pairs, transcript = _persist_video_and_extract(
+                    video_url, slide_pairs, transcript, warn = _persist_video_and_extract(
                         test_id, v.label, vid
                     )
                 except ValueError as e:
                     return jsonify({"success": False, "error": str(e)}), 400
+                if warn:
+                    extraction_warnings.append(warn)
                 v.video_url = video_url
                 if transcript:
                     v.audio_transcript = transcript
@@ -533,6 +541,10 @@ def creative_test_start():
                     progress_cb=progress_cb,
                     client_id=client_id,
                 )
+                # Merge pre-run extraction warnings with any LLM-fallback
+                # warnings tagged by runner.py (_warnings key).
+                run_warnings = result.pop("_warnings", [])
+                all_warnings = extraction_warnings + run_warnings
                 completed_request = req.to_dict()
                 for v in completed_request.get("creative_variants") or []:
                     v.pop("image_data_url", None)
@@ -544,6 +556,7 @@ def creative_test_start():
                         "status": "completed",
                         "request": completed_request,
                         "result": result,
+                        "warnings": all_warnings,
                     }
                 )
                 task_manager.complete_task(
@@ -564,6 +577,7 @@ def creative_test_start():
                         "request": failed_request,
                         "result": None,
                         "error": str(e),
+                        "warnings": extraction_warnings,
                     }
                 )
                 task_manager.fail_task(task_id, str(e))
@@ -644,6 +658,7 @@ def creative_test_status(test_id: str):
                     "stage": stage,
                     "message": message,
                     "error": record.get("error"),
+                    "warnings": record.get("warnings", []),
                     # Solo devolvemos el resultado completo cuando termino,
                     # para que el polling sea liviano.
                     "result": record.get("result") if record.get("status") == "completed" else None,

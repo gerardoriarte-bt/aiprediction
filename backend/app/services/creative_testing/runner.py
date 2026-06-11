@@ -119,11 +119,16 @@ def run_live(
     context" para que el modelo razone con la memoria del cliente y
     cite los hechos en su rationale.
     """
+    def _mock_with_warning(reason: str) -> Dict[str, Any]:
+        result = run_mock(request, progress_cb, client_facts=client_facts)
+        result.setdefault("_warnings", []).append(f"Ran in mock mode: {reason}.")
+        return result
+
     try:
         from ...utils.llm_client import LLMClient
     except Exception as e:
         logger.warning(f"LLMClient unavailable, falling back to mock: {e}")
-        return run_mock(request, progress_cb, client_facts=client_facts)
+        return _mock_with_warning(f"LLMClient unavailable ({e})")
 
     _emit(progress_cb, "planning", 10, "drafting prompt")
 
@@ -131,7 +136,7 @@ def run_live(
         client = LLMClient()
     except Exception as e:
         logger.warning(f"LLMClient init failed, falling back to mock: {e}")
-        return run_mock(request, progress_cb, client_facts=client_facts)
+        return _mock_with_warning(f"LLMClient init failed ({e})")
 
     _emit(progress_cb, "evaluating", 30, "calling LLM")
 
@@ -140,14 +145,14 @@ def run_live(
         raw = client.chat_json(messages=messages, temperature=0.3, max_tokens=4096)
     except Exception as e:
         logger.warning(f"LLM call failed, falling back to mock: {e}")
-        return run_mock(request, progress_cb, client_facts=client_facts)
+        return _mock_with_warning(f"LLM call failed ({e})")
 
     _emit(progress_cb, "scoring", 70, "parsing response")
 
     normalized = _normalize_live_result(raw, request)
     if normalized is None:
         logger.warning("LLM returned malformed JSON; falling back to mock")
-        return run_mock(request, progress_cb, client_facts=client_facts)
+        return _mock_with_warning("LLM returned malformed JSON")
 
     if client_facts:
         normalized["client_context_facts"] = list(client_facts)

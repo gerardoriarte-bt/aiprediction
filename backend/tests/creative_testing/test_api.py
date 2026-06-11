@@ -222,3 +222,164 @@ def test_image_endpoint_404s_for_missing_file(client, tmp_path, monkeypatch):
     monkeypatch.setattr(ct_api, "_images_dir", lambda tid: str(tmp_path))
     res = client.get("/api/report/creative-test/abc/images/missing.png")
     assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /health
+# ---------------------------------------------------------------------------
+
+def test_health_always_200_when_enabled(client):
+    res = client.get("/api/report/creative-test/health")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["success"] is True
+    data = body["data"]
+    assert data["enabled"] is True
+    assert data["mode"] == "mock"
+    assert data["phase"] == 1
+
+
+def test_health_200_even_when_flag_off(client, monkeypatch):
+    monkeypatch.setattr(ct_api.Config, "CREATIVE_TESTING_ENABLED", False)
+    res = client.get("/api/report/creative-test/health")
+    assert res.status_code == 200
+    assert res.get_json()["data"]["enabled"] is False
+
+
+# ---------------------------------------------------------------------------
+# GET /list
+# ---------------------------------------------------------------------------
+
+def test_list_returns_empty_when_no_records(client, monkeypatch):
+    monkeypatch.setattr(ct_api.CreativeTestStore, "list_recent", lambda limit: [])
+    res = client.get("/api/report/creative-test/list")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["success"] is True
+    assert body["data"] == []
+    assert body["count"] == 0
+
+
+def test_list_respects_limit_param(client, monkeypatch):
+    received = {}
+
+    def _list(limit):
+        received["limit"] = limit
+        return []
+
+    monkeypatch.setattr(ct_api.CreativeTestStore, "list_recent", _list)
+    client.get("/api/report/creative-test/list?limit=5")
+    assert received["limit"] == 5
+
+
+def test_list_returns_records(client, monkeypatch):
+    records = [{"test_id": "t1", "status": "completed"}, {"test_id": "t2", "status": "running"}]
+    monkeypatch.setattr(ct_api.CreativeTestStore, "list_recent", lambda limit: records)
+    res = client.get("/api/report/creative-test/list")
+    body = res.get_json()
+    assert body["count"] == 2
+    assert body["data"][0]["test_id"] == "t1"
+
+
+def test_list_404_when_flag_off(client, monkeypatch):
+    monkeypatch.setattr(ct_api.Config, "CREATIVE_TESTING_ENABLED", False)
+    res = client.get("/api/report/creative-test/list")
+    assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /<test_id>
+# ---------------------------------------------------------------------------
+
+def test_get_test_returns_record(client, monkeypatch):
+    record = {"test_id": "ctest_ABC", "status": "completed", "result": {"score": 0.9}}
+    monkeypatch.setattr(ct_api.CreativeTestStore, "get", lambda tid: record)
+    res = client.get("/api/report/creative-test/ctest_ABC")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["success"] is True
+    assert body["data"]["test_id"] == "ctest_ABC"
+
+
+def test_get_test_404_for_unknown(client, monkeypatch):
+    monkeypatch.setattr(ct_api.CreativeTestStore, "get", lambda tid: None)
+    res = client.get("/api/report/creative-test/nonexistent")
+    assert res.status_code == 404
+    assert "not found" in res.get_json()["error"]
+
+
+def test_get_test_404_when_flag_off(client, monkeypatch):
+    monkeypatch.setattr(ct_api.Config, "CREATIVE_TESTING_ENABLED", False)
+    res = client.get("/api/report/creative-test/ctest_ABC")
+    assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /<test_id>/status
+# ---------------------------------------------------------------------------
+
+def _make_status_stubs(monkeypatch, record):
+    monkeypatch.setattr(ct_api.CreativeTestStore, "get", lambda tid: record)
+
+    class _TM:
+        def list_tasks(self, task_type=None):
+            return []
+
+    monkeypatch.setattr(ct_api, "TaskManager", lambda: _TM())
+
+
+def test_status_completed_record(client, monkeypatch):
+    record = {
+        "test_id": "ctest_C",
+        "status": "completed",
+        "mode": "mock",
+        "result": {"score": 0.8},
+        "warnings": [],
+    }
+    _make_status_stubs(monkeypatch, record)
+    res = client.get("/api/report/creative-test/ctest_C/status")
+    assert res.status_code == 200
+    data = res.get_json()["data"]
+    assert data["status"] == "completed"
+    assert data["progress"] == 100
+    assert data["result"] is not None
+    assert data["warnings"] == []
+
+
+def test_status_running_no_result(client, monkeypatch):
+    record = {"test_id": "ctest_R", "status": "running", "mode": "mock", "warnings": []}
+    _make_status_stubs(monkeypatch, record)
+    res = client.get("/api/report/creative-test/ctest_R/status")
+    assert res.status_code == 200
+    data = res.get_json()["data"]
+    assert data["status"] == "running"
+    assert data["result"] is None
+
+
+def test_status_failed_exposes_warnings(client, monkeypatch):
+    record = {
+        "test_id": "ctest_F",
+        "status": "failed",
+        "mode": "live",
+        "error": "boom",
+        "warnings": ["Video extraction failed for variant 'A': frames and transcript unavailable."],
+    }
+    _make_status_stubs(monkeypatch, record)
+    res = client.get("/api/report/creative-test/ctest_F/status")
+    assert res.status_code == 200
+    data = res.get_json()["data"]
+    assert data["error"] == "boom"
+    assert len(data["warnings"]) == 1
+    assert "Video extraction failed" in data["warnings"][0]
+
+
+def test_status_404_for_unknown_id(client, monkeypatch):
+    monkeypatch.setattr(ct_api.CreativeTestStore, "get", lambda tid: None)
+    res = client.get("/api/report/creative-test/nope/status")
+    assert res.status_code == 404
+
+
+def test_status_404_when_flag_off(client, monkeypatch):
+    monkeypatch.setattr(ct_api.Config, "CREATIVE_TESTING_ENABLED", False)
+    res = client.get("/api/report/creative-test/ctest_X/status")
+    assert res.status_code == 404

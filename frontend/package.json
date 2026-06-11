@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
@@ -22,6 +23,9 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
-    "vite": "^7.2.4"
+    "@vue/test-utils": "^2.4.11",
+    "happy-dom": "^20.10.2",
+    "vite": "^7.2.4",
+    "vitest": "^4.1.8"
   }
 }
