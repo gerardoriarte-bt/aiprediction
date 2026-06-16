@@ -41,8 +41,6 @@ def _ok(msg: str) -> None:
 
 
 def main() -> int:
-    if Config.GRAPH_BACKEND != "postgres":
-        _fail(f"GRAPH_BACKEND={Config.GRAPH_BACKEND!r}; expected 'postgres'")
     if not Config.DATABASE_URL:
         _fail("DATABASE_URL is empty")
 

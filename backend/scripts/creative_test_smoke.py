@@ -61,6 +61,12 @@ def _build_brief(
             "cta": "Shop now",
             "tone": "urgent",
         },
+        {
+            "label": "T2",
+            "headline": "New arrivals — spring collection is here",
+            "cta": "Explore now",
+            "tone": "aspirational",
+        },
     ]
 
     if image_path:
